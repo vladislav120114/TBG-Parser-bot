@@ -1,22 +1,28 @@
+import json
 import sqlite3
 import telebot
 from telebot import types
 from threading import Thread
 from datetime import datetime, UTC
-from parser import main as run_parser  # Импортируем функцию main из parser.py
+from parser import main as run_parser
 import time
 from openpyxl import Workbook
 import os
+import hashlib
 
-# Настройки бота
-TOKEN = '7136085502:AAG5t-gbQBqiVLU6Tm035Qc5RE_9MMaRyIA'  # Замените на ваш токен бота
+password = "c3b6a5552c14932785bbe94f9c4e58cba3d91b4b4937c0b9721cad2ee462a1e0"
+
+TOKEN = '7136085502:AAG5t-gbQBqiVLU6Tm035Qc5RE_9MMaRyIA'
 DB_PATH = 'aircraft_data.db'
 
-# Инициализация бота
 bot = telebot.TeleBot(TOKEN)
 monitoring = {}
 
-# Функция для получения списка таблиц типов самолетов
+
+def hash_it(text):
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def get_aircraft_types():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -25,7 +31,7 @@ def get_aircraft_types():
     conn.close()
     return [table[0].replace('aircraft_', '').replace('_', '-') for table in tables if table[0].startswith('aircraft_')]
 
-# Функция для получения новых записей по типу самолета
+
 def get_new_records(aircraft_type, last_check):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -35,24 +41,64 @@ def get_new_records(aircraft_type, last_check):
     conn.close()
     return records
 
-# Обработчик команды /start
+
+def monitor_updates(user_id, aircraft_type):
+    last_check = monitoring[user_id]['last_check']
+
+    while user_id in monitoring:
+        new_records = get_new_records(aircraft_type, last_check)
+        if new_records:
+            for record in new_records:
+                text = f'Самолет типа {aircraft_type} с ICAO кодом {record[2]} отметился в {record[1]}'
+                markup = types.InlineKeyboardMarkup()
+                detail = types.InlineKeyboardButton("Показать полную информацию", callback_data=f'detail_{record[0]}')
+                full = types.InlineKeyboardButton("Выгрузить все выходы", callback_data=f'full_{record[2]}')
+                markup.add(detail)
+                markup.add(full)
+                bot.send_message(user_id, text, reply_markup=markup)
+            last_check = new_records[-1][1]
+            monitoring[user_id]['last_check'] = last_check
+        time.sleep(10)
+
+
 @bot.message_handler(commands=['start'])
 def start(message):
-    keyboard = types.InlineKeyboardMarkup()
-    aircraft_types = get_aircraft_types()
-    arr = []
-    for i in range(len(aircraft_types)):
-        if (i+1) % 4 != 0:
-            arr.append(types.InlineKeyboardButton(aircraft_types[i], callback_data=f'type_{aircraft_types[i]}'))
-        else:
-            arr.append(types.InlineKeyboardButton(aircraft_types[i], callback_data=f'type_{aircraft_types[i]}'))
-            keyboard.row(*arr)
-            arr = []
-        if len(aircraft_types) - i - 1 == 0:
-            keyboard.row(*arr)
-    bot.send_message(message.chat.id, "Выберите тип самолета:", reply_markup=keyboard)
+    global users
+    try:
+        with open('users.json', 'r') as f:
+            users = json.load(f)
+    except:
+        users = {
+            'arr': []
+        }
+    if hash_it(str(message.from_user.id)) in users['arr']:
+        keyboard = types.InlineKeyboardMarkup()
+        aircraft_types = get_aircraft_types()
+        arr = []
+        for i in range(len(aircraft_types)):
+            if (i+1) % 4 != 0:
+                arr.append(types.InlineKeyboardButton(aircraft_types[i], callback_data=f'type_{aircraft_types[i]}'))
+            else:
+                arr.append(types.InlineKeyboardButton(aircraft_types[i], callback_data=f'type_{aircraft_types[i]}'))
+                keyboard.row(*arr)
+                arr = []
+            if len(aircraft_types) - i - 1 == 0:
+                keyboard.row(*arr)
+        bot.send_message(message.chat.id, "Выберите тип самолета:", reply_markup=keyboard)
+    else:
+        bot.send_message(message.chat.id, 'Вы не авторизованны в системе. Введите пароль')
 
-# Обработчик выбора типа самолета
+@bot.message_handler(func=lambda message: True)
+def check_pass(message):
+    if hash_it(str(message.text)) == password:
+        bot.send_message(message.chat.id, 'Пароль верный')
+        users['arr'].append(hash_it(str(message.from_user.id)))
+        with open('users.json', 'w') as f:
+            json.dump(users, f, ensure_ascii=False, indent=4)
+        start(message)
+    else:
+        bot.send_message(message.chat.id, 'Пароль неверный')
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith('type_'))
 def type_callback_query(call):
     keyboard = types.InlineKeyboardMarkup()
@@ -61,6 +107,7 @@ def type_callback_query(call):
     update = types.InlineKeyboardButton('Выводить новые записи', callback_data=f'update_{aircraft_type}')
     keyboard.add(download, update)
     bot.send_message(call.message.chat.id, f"Вы выбрали тип: {aircraft_type}.", reply_markup=keyboard)
+
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('update_'))
 def update_callback_query(call):
@@ -71,6 +118,7 @@ def update_callback_query(call):
     monitoring[call.message.chat.id] = {'aircraft_type': aircraft_type, 'last_check': datetime.now(UTC).isoformat()}
     monitor_thread = Thread(target=monitor_updates, args=(call.message.chat.id, aircraft_type))
     monitor_thread.start()
+
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('download_'))
 def download_callback_query(call):
@@ -97,26 +145,7 @@ def download_callback_query(call):
     f.close()
     os.remove(f"{aircraft_type}.xlsx")
 
-# Мониторинг новых записей
-def monitor_updates(user_id, aircraft_type):
-    last_check = monitoring[user_id]['last_check']
 
-    while user_id in monitoring:
-        new_records = get_new_records(aircraft_type, last_check)
-        if new_records:
-            for record in new_records:
-                text = f'Самолет типа {aircraft_type} с ICAO кодом {record[2]} отметился в {record[1]}'
-                markup = types.InlineKeyboardMarkup()
-                detail = types.InlineKeyboardButton("Показать полную информацию", callback_data=f'detail_{record[0]}')
-                full = types.InlineKeyboardButton("Выгрузить все выходы", callback_data=f'full_{record[2]}')
-                markup.add(detail)
-                markup.add(full)
-                bot.send_message(user_id, text, reply_markup=markup)
-            last_check = new_records[-1][1]
-            monitoring[user_id]['last_check'] = last_check
-        time.sleep(10)  # Задержка перед следующим запросом
-
-# Обработчик полной информации
 @bot.callback_query_handler(func=lambda call: call.data.startswith('detail_'))
 def detail_callback_query(call):
     record_id = int(call.data.split('_')[1])
@@ -140,6 +169,7 @@ def detail_callback_query(call):
             f"Msg: {record[7]}"
         )
         bot.send_message(call.message.chat.id, full_text)
+
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('full_'))
 def full_callback_query(call):
@@ -167,15 +197,15 @@ def full_callback_query(call):
     f.close()
     os.remove(f"{icao}.xlsx")
 
-# Обработчик команды /stop
+
 @bot.message_handler(commands=['stop'])
 def stop(message):
     if message.chat.id in monitoring:
         del monitoring[message.chat.id]
     start(message)
 
-# Запуск парсера и бота
+
 if __name__ == '__main__':
     parser_thread = Thread(target=run_parser)
     parser_thread.start()
-    bot.polling()
+    bot.infinity_polling(none_stop=True)
