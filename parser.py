@@ -123,10 +123,7 @@ def continuous_parsing(interval):
 
 
 def main():
-    try:
-        continuous_parsing(10)
-    except:
-        continuous_parsing(10)  # Запуск непрерывного парсинга с интервалом 60 секунд
+    continuous_parsing(10)
 
 
 if __name__ == '__main__':
