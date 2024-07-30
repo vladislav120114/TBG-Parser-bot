@@ -8,7 +8,6 @@ from parser import main as run_parser
 import time
 from openpyxl import Workbook
 import os
-
 import hashlib
 
 password = "c3b6a5552c14932785bbe94f9c4e58cba3d91b4b4937c0b9721cad2ee462a1e0"

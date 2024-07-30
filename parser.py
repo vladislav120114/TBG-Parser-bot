@@ -5,9 +5,8 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
-
+import os
 urls = [
     "https://tbg.airframes.io/dashboard/milusaf",
     "https://tbg.airframes.io/dashboard/milraf",
@@ -26,7 +25,7 @@ driver = webdriver.Chrome(options=chrome_options)
 
 def parse_page(url):
     driver.get(url)
-    WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, '//tbody')))
+    WebDriverWait(driver, timeout=60).until(EC.presence_of_element_located((By.XPATH, '//tbody')))
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     rows = soup.select('tbody tr')
     data = []
@@ -42,7 +41,7 @@ def parse_page(url):
             except:
                 continue
         record['time'] = datetime.strptime(record['time'], '%H:%M:%SZ %d-%m-%Y').isoformat()
-        record['msg'] = record['msg'].replace('\\x0', '').replace('\\x07', '').replace('\\x', '')
+        record['msg'] = record['msg'].replace('\\', ' ')
         data.append(record)
     return data
 
@@ -111,8 +110,10 @@ def continuous_parsing(interval):
 
 
 def main():
-    continuous_parsing(10)
-
+    try:
+        continuous_parsing(60)
+    except:
+        main()
 
 if __name__ == '__main__':
     main()
