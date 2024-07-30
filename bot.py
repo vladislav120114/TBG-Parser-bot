@@ -75,14 +75,14 @@ def start(message):
         keyboard = types.InlineKeyboardMarkup()
         aircraft_types = get_aircraft_types()
         arr = []
-        for i in range(len(aircraft_types)):
-            if (i+1) % 4 != 0:
-                arr.append(types.InlineKeyboardButton(aircraft_types[i], callback_data=f'type_{aircraft_types[i]}'))
-            else:
-                arr.append(types.InlineKeyboardButton(aircraft_types[i], callback_data=f'type_{aircraft_types[i]}'))
+        for i in aircraft_types:
+            if i == '':
+                continue
+            arr.append(types.InlineKeyboardButton(i, callback_data=f'type_{i}'))
+            if len(arr) == 4:
                 keyboard.row(*arr)
                 arr = []
-            if len(aircraft_types) - i - 1 == 0:
+            if len(aircraft_types) - len(arr) == 0:
                 keyboard.row(*arr)
         bot.send_message(message.chat.id, "Выберите тип самолета:", reply_markup=keyboard)
     else:
