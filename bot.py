@@ -90,6 +90,14 @@ def start(message):
 
 @bot.message_handler(func=lambda message: True)
 def check_pass(message):
+    global users
+    try:
+        with open('users.json', 'r') as f:
+            users = json.load(f)
+    except:
+        users = {
+            'arr': []
+        }
     if hash_it(str(message.text)) == password:
         bot.send_message(message.chat.id, 'Пароль верный')
         users['arr'].append(hash_it(str(message.from_user.id)))
@@ -202,7 +210,19 @@ def full_callback_query(call):
 def stop(message):
     if message.chat.id in monitoring:
         del monitoring[message.chat.id]
-    start(message)
+    keyboard = types.InlineKeyboardMarkup()
+    aircraft_types = get_aircraft_types()
+    arr = []
+    for i in aircraft_types:
+        if i == '':
+            continue
+        arr.append(types.InlineKeyboardButton(i, callback_data=f'type_{i}'))
+        if len(arr) == 4:
+            keyboard.row(*arr)
+            arr = []
+        if len(aircraft_types) - len(arr) == 0:
+            keyboard.row(*arr)
+    bot.send_message(message.chat.id, "Выберите тип самолета:", reply_markup=keyboard)
 
 
 if __name__ == '__main__':
