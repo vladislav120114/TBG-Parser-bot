@@ -12,7 +12,7 @@ import hashlib
 
 password = "c3b6a5552c14932785bbe94f9c4e58cba3d91b4b4937c0b9721cad2ee462a1e0"
 
-TOKEN = '7136085502:AAG5t-gbQBqiVLU6Tm035Qc5RE_9MMaRyIA'
+TOKEN = 'YOUR_TOKEN'
 DB_PATH = 'aircraft_data.db'
 
 bot = telebot.TeleBot(TOKEN)
